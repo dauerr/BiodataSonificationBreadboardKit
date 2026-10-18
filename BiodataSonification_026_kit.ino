@@ -25,10 +25,10 @@ MIDIsprout.com
   #define MIDI_SERIAL Serial
 #endif
 
-//debug log: set to 1 to print every note the sketch tries to send as text, open the Serial Monitor at 115200 baud
+//debug log: set to 1 to print every note the sketch tries to send as text, open the Serial Monitor at 9600 baud
 //on 32U4 boards the log goes over USB next to USB MIDI and the MIDI out jack keeps working
 //on the Uno the log and the MIDI out jack share the TX pin, so the jack is silent while logging
-#define DEBUG_LOG 0
+#define DEBUG_LOG 1
 #define MIDI_JACK !(DEBUG_LOG && !USB_MIDI)
 int maxBrightness = 190;
 
@@ -128,7 +128,7 @@ void setup()
   MIDI_SERIAL.begin(31250);  //initialize at MIDI rate
 #endif
 #if DEBUG_LOG
-  Serial.begin(115200); //for debugging, see DEBUG_LOG
+  Serial.begin(9600); //for debugging, see DEBUG_LOG
   Serial.println(F("Biodata debug log"));
 #endif
 
