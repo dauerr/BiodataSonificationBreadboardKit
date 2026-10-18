@@ -24,6 +24,12 @@ MIDIsprout.com
   #define USB_MIDI 0
   #define MIDI_SERIAL Serial
 #endif
+
+//debug log: set to 1 to print every note the sketch tries to send as text, open the Serial Monitor at 115200 baud
+//on 32U4 boards the log goes over USB next to USB MIDI and the MIDI out jack keeps working
+//on the Uno the log and the MIDI out jack share the TX pin, so the jack is silent while logging
+#define DEBUG_LOG 0
+#define MIDI_JACK !(DEBUG_LOG && !USB_MIDI)
 int maxBrightness = 190;
 
 //******************************
@@ -118,9 +124,14 @@ void setup()
   button.interval(5);
   
   randomSeed(analogRead(0)); //seed for QY8 4 channel mode
+#if MIDI_JACK
   MIDI_SERIAL.begin(31250);  //initialize at MIDI rate
-  //Serial.begin(9600); //for debugging 
-  
+#endif
+#if DEBUG_LOG
+  Serial.begin(115200); //for debugging, see DEBUG_LOG
+  Serial.println(F("Biodata debug log"));
+#endif
+
   controlMessage.value = 0;  //begin CV at 0
   //MIDIpanic(); //dont panic, unless you are sure it is nessisary
   checkBattery(); // shut off lightshow if power is too low
@@ -150,6 +161,12 @@ void loop()
 
 void setNote(int value, int velocity, long duration, int notechannel)
 {
+  logNote(F("note on  "), value, QY8 ? notechannel : channel);
+#if DEBUG_LOG
+  Serial.print(F(" vel ")); Serial.print(velocity);
+  Serial.print(F(" dur ")); Serial.print(duration); Serial.println(F("ms"));
+  bool sent = false;
+#endif
   //find available note in array (velocity = 0);
   for(int i=0;i<polyphony;i++){
     if(!noteArray[i].velocity){
@@ -161,8 +178,11 @@ void setNote(int value, int velocity, long duration, int notechannel)
       noteArray[i].channel = notechannel;
      
       
-        if(QY8) { midiSerial(144, notechannel, value, velocity); } 
+        if(QY8) { midiSerial(144, notechannel, value, velocity); }
         else { midiSerial(144, channel, value, velocity); }
+#if DEBUG_LOG
+      sent = true;
+#endif
 
 
       if(noteLEDs == 1){ //normal mode
@@ -178,6 +198,24 @@ void setNote(int value, int velocity, long duration, int notechannel)
       break;
     }
   }
+#if DEBUG_LOG
+  if(!sent) { Serial.print(F("  dropped, all ")); Serial.print(polyphony); Serial.println(F(" voices busy")); }
+#endif
+}
+
+//print "<label><note name> (<number>) ch <channel>" when DEBUG_LOG is on, caller finishes the line
+void logNote(const __FlashStringHelper* label, int note, int ch)
+{
+#if DEBUG_LOG
+  static const char names[] PROGMEM = "C C#D D#E F F#G G#A A#B ";
+  byte n = (note & 0x7F) % 12;
+  Serial.print(label);
+  Serial.print((char)pgm_read_byte(&names[n*2]));
+  char sharp = pgm_read_byte(&names[n*2+1]);
+  if(sharp != ' ') Serial.print(sharp);
+  Serial.print((note & 0x7F) / 12 - 1); //MIDI 60 = C4
+  Serial.print(F(" (")); Serial.print(note); Serial.print(F(") ch ")); Serial.print(ch);
+#endif
 }
 
 void setControl(int type, int value, int velocity, long duration)
@@ -222,6 +260,10 @@ void checkNote()
         //send noteOff for all notes with expired duration    
           if(QY8) { midiSerial(144, noteArray[i].channel, noteArray[i].value, 0); }
           else { midiSerial(144, channel, noteArray[i].value, 0); }
+        logNote(F("note off "), noteArray[i].value, QY8 ? noteArray[i].channel : channel);
+#if DEBUG_LOG
+        Serial.println();
+#endif
         noteArray[i].velocity = 0;
         if(noteLEDs == 1) rampDown(i, 0, 225);
         if(noteLEDs == 2) rampDown(i+1, 0, 225); //special threshold display mode
@@ -264,9 +306,11 @@ void midiSerial(int type, int channel, int data1, int data2) {
     
     byte statusbyte = (type | ((channel-1) & 0x0F));
     
+#if MIDI_JACK
     MIDI_SERIAL.write(statusbyte);
     MIDI_SERIAL.write(data1);
     MIDI_SERIAL.write(data2);
+#endif
   sei(); //enable interrupts
 
 #if USB_MIDI
