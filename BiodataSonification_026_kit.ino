@@ -12,18 +12,6 @@ MIDIsprout.com
 #include <EEPROMex.h> //store and read variables to nonvolitle memory
 #include <Bounce2.h> //https://github.com/thomasfredericks/Bounce-Arduino-Wiring
 #include <LEDFader.h> //manage LEDs without delay() jgillick/arduino-LEDFader https://github.com/jgillick/arduino-LEDFader.git
-
-//USB MIDI: on boards with native USB (ATmega32U4: Leonardo, Micro) the device also shows up
-//as a class compliant USB MIDI device, see hardware/README.md to name it "Biodata MIDI"
-//on the Uno the MIDI out jack is on Serial, on 32U4 boards Serial is USB and the jack is on Serial1
-#if defined(__AVR_ATmega32U4__)
-  #define USB_MIDI 1
-  #include <MIDIUSB.h> //https://github.com/arduino-libraries/MIDIUSB
-  #define MIDI_SERIAL Serial1
-#else
-  #define USB_MIDI 0
-  #define MIDI_SERIAL Serial
-#endif
 int maxBrightness = 190;
 
 //******************************
@@ -42,7 +30,7 @@ int scale[scaleCount][scaleLen] = {
 int root = 0; //initialize for root, pitch shifting
 //*******************************
 
-const byte galvPin = 2; //galvanometer input, D2 (INT0 on Uno, INT1 on 32U4)
+const byte interruptPin = INT0; //galvanometer input
 const byte knobPin = A0; //knob analog input
 Bounce button = Bounce(); //debounce button using Bounce2
 const byte buttonPin = A1; //tact button input
@@ -118,14 +106,14 @@ void setup()
   button.interval(5);
   
   randomSeed(analogRead(0)); //seed for QY8 4 channel mode
-  MIDI_SERIAL.begin(31250);  //initialize at MIDI rate
+  Serial.begin(31250);  //initialize at MIDI rate
   //Serial.begin(9600); //for debugging 
   
   controlMessage.value = 0;  //begin CV at 0
   //MIDIpanic(); //dont panic, unless you are sure it is nessisary
   checkBattery(); // shut off lightshow if power is too low
   if(noteLEDs) bootLightshow(); //a light show to display on system boot
-  attachInterrupt(digitalPinToInterrupt(galvPin), sample, RISING);  //begin sampling from interrupt
+  attachInterrupt(interruptPin, sample, RISING);  //begin sampling from interrupt
   
 }
 
@@ -264,18 +252,10 @@ void midiSerial(int type, int channel, int data1, int data2) {
     
     byte statusbyte = (type | ((channel-1) & 0x0F));
     
-    MIDI_SERIAL.write(statusbyte);
-    MIDI_SERIAL.write(data1);
-    MIDI_SERIAL.write(data2);
+    Serial.write(statusbyte);
+    Serial.write(data1);
+    Serial.write(data2);
   sei(); //enable interrupts
-
-#if USB_MIDI
-  //forward the same message over USB MIDI, outside cli() as USB sending relies on millis() for its timeout
-  //header is the USB MIDI code index number, the status high nibble
-  midiEventPacket_t event = {(byte)(statusbyte >> 4), statusbyte, (byte)data1, (byte)data2};
-  MidiUSB.sendMIDI(event);
-  MidiUSB.flush();
-#endif
 }
 
 
@@ -405,11 +385,7 @@ void checkMenu(){
 long readVcc() {  //https://code.google.com/p/tinkerit/wiki/SecretVoltmeter
   long result;
   // Read 1.1V reference against AVcc
-#if defined(__AVR_ATmega32U4__)
-  ADMUX = _BV(REFS0) | _BV(MUX4) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
-#else
   ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
-#endif
   delay(2); // Wait for Vref to settle
   ADCSRA |= _BV(ADSC); // Convert
   while (bit_is_set(ADCSRA,ADSC));
